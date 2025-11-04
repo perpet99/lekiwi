@@ -1,6 +1,6 @@
 # LeKiwi
 
-[![CI](https://github.com/ekumenlabs/rnd_lekiwi/workflows/ci/badge.svg)](https://github.com/ekumenlabs/rnd_lekiwi/actions)
+[![CI](https://github.com/ekumenlabs/lekiwi/actions/workflows/ci.yaml/badge.svg)](https://github.com/ekumenlabs/lekiwi/actions)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## :globe_with_meridians: Overview

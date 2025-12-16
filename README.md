@@ -18,13 +18,13 @@ Comprehensive monorepo for LeKiwi robot software development, combining simulati
 ## :package: Project Structure
 
 ```
-lekiwi-dora/
+lekiwi/
 ├── 📁 packages/                             # Python packages
 │   ├── 🎮 lekiwi_sim/                       # MuJoCo simulation environment
 │   ├── 🤖 lekiwi_lerobot/                   # LeRobot integration scripts
 │   └── 🕹️ lekiwi_teleoperate/               # Teleoperation interface
 ├── 📁 dora/                                 # Dora Integration
-│   └── 📁 graphs/                           # Dora dataflows
+│   └── 📁 lekiwi/graphs/                    # Dora dataflows
 │   └── 📁 node_hub/                         # Dora nodes
 │       ├── 🔗 dora_lekiwi_client/           # Robot interface node
 │       ├── 🧠 dora_run_policy/              # Policy execution node
@@ -166,9 +166,18 @@ Manual control interface using the LeRobot API:
 # Start simulation or real robot first
 uv run lekiwi_host_sim  # For simulation
 
-# Then teleoperate
+# Then teleoperate the simulated or real robot.
 uv run lekiwi_teleoperate
 ```
+By default it will allow you to teleoperate the Lekiwi completely using the keyboard.
+If you have a leader arm you can use it to teleoperate the arm part in the simulation as well:
+
+```bash
+uv run lekiwi_teleoperate --leader-arm
+```
+
+[lekiwi_sim_leader_LOW.webm](https://github.com/user-attachments/assets/76e565cd-93d2-42ae-976d-3d25091039a4)
+
 
 [lekiwi_sim_pick_cube.webm](https://github.com/user-attachments/assets/32af6eca-834b-4ba4-8609-33bc428cb75f)
 
@@ -182,7 +191,7 @@ uv run lekiwi_lerobot_record --repo-id your_username/dataset_name --episodes 50
 uv run lekiwi_lerobot_replay --repo-id your_username/dataset_name --episode 0
 
 # Train a policy (see lekiwi_lerobot README for full training options)
-python -m lerobot.scripts.train \
+uv run lerobot-train \
   --dataset.repo_id=your_username/dataset_name \
   --policy.type=act \
   --output_dir=outputs/my_policy
@@ -202,9 +211,9 @@ See [packages/lekiwi_lerobot/README.md](packages/lekiwi_lerobot/README.md) for d
 
 ### Available Dataflows
 
-The repository includes pre-configured dataflow graphs in `dora/lekiwi_sim/graphs/`:
+The repository includes pre-configured dataflow graphs in `dora/lekiwi/graphs/`:
 
-**1. Policy Execution Dataflow** (`mujoco_sim.yml`):
+**1. Policy Execution Dataflow** (`dataflow.yml`):
    - Complete pipeline for running trained policies on simulation
    - Connects robot observations → policy inference → robot actions
    - Includes camera feeds and state observations
@@ -214,21 +223,25 @@ The repository includes pre-configured dataflow graphs in `dora/lekiwi_sim/graph
 
 **Prerequisites:**
 ```bash
-# Start simulation in separate terminal
+
+# Start simulation (or alternatively the real robot).
 uv run lekiwi_host_sim
 ```
 
 **Run the policy execution dataflow:**
 ```bash
 # Navigate to dataflow directory
-cd dora/lekiwi_sim/graphs/
+cd dora/lekiwi/graphs/
+
+# Build if not built already
+dora build dataflow.yml
 
 # Start the dataflow
-dora run mujoco_sim.yml --uv
+dora run dataflow.yml --uv
 
 ```
 
-**Optional features** (uncomment in `mujoco_sim.yml`):
+**Optional features** (uncomment in `dataflow.yml`):
 - **Visualization**: Enable `rerun-viz` node for real-time 3D visualization
 - **Data Recording**: Enable `dora-record` node to save observations to Parquet files
 - **Testing Mode**: Use `dora_lekiwi_action_publisher` instead of policy for hardcoded actions

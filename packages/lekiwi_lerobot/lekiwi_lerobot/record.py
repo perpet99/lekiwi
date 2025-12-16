@@ -3,6 +3,7 @@ import logging
 
 from lekiwi_lerobot.utils import record_loop
 from lekiwi_teleoperate.teleoperate.arm import ArmTeleop
+from lerobot.cameras.configs import CameraConfig
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import hw_to_dataset_features
 from lerobot.robots.lekiwi.config_lekiwi import LeKiwiClientConfig
@@ -11,6 +12,7 @@ from lerobot.teleoperators.keyboard import (
     KeyboardTeleop,
     KeyboardTeleopConfig,
 )
+from lerobot.teleoperators.so101_leader import SO101Leader, SO101LeaderConfig
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.control_utils import (
     init_keyboard_listener,
@@ -31,6 +33,13 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         default="INFO",
         help="Set the logging level (default: INFO). Case-insensitive.",
+    )
+    parser.add_argument(
+        "-i",
+        "--ip",
+        type=str,
+        default="127.0.0.1",
+        help="IP address of the robot (default: 127.0.0.1).",
     )
     parser.add_argument(
         "-r",
@@ -59,6 +68,18 @@ def main() -> None:
         dest="visualize",
         help="Disable Rerun visualization during recording.",
     )
+    parser.add_argument(
+        "-la",
+        "--leader-arm",
+        action="store_true",
+        help="Use the leader arm for teleoperation (default: False).",
+    )
+    parser.add_argument(
+        "--leader-arm-port",
+        type=str,
+        default="/dev/ttyACM0",
+        help="Serial port for the leader arm (default: /dev/ttyACM0).",
+    )
 
     args = parser.parse_args()
     if args.repo_id is None:
@@ -72,13 +93,28 @@ def main() -> None:
         level=log_level, format="%(asctime)s | %(levelname)-8s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
+    # Camera config should match the one used in the robot config
+    # when starting the robot host or simulation.
+    #
+    # Based on: --robot.cameras="{ front: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30},
+    # wrist: {type: opencv, index_or_path: /dev/video2, width: 640, height: 480, fps: 30}}"
+    camera_config: dict[str, CameraConfig] = {
+        "front": CameraConfig(width=640, height=480, fps=30),
+        "wrist": CameraConfig(width=640, height=480, fps=30),
+    }
+
     # Create the robot and teleoperator configurations
-    robot_config = LeKiwiClientConfig(remote_ip="127.0.0.1", id="lekiwi")
+    robot_config = LeKiwiClientConfig(remote_ip=args.ip, id="lekiwi", cameras=camera_config)
     keyboard_config = KeyboardTeleopConfig()
+    if args.leader_arm:
+        teleop_arm_config = SO101LeaderConfig(port=args.leader_arm_port, id="lekiwi_leader_arm")
 
     robot = LeKiwiClient(robot_config)
     keyboard = KeyboardTeleop(keyboard_config)
-    arm_keyboard_handler = ArmTeleop()
+    if args.leader_arm:
+        leader_arm = SO101Leader(teleop_arm_config)
+    else:
+        arm_keyboard_handler = ArmTeleop()
     # Configure the dataset features
     action_features = hw_to_dataset_features(robot.action_features, ACTION)
     obs_features = hw_to_dataset_features(robot.observation_features, OBS_STR)
@@ -102,6 +138,8 @@ def main() -> None:
     #  - Sim robot: this script running on LeKiwi sim: `uv run lekiwi_sim --robot.id=my_awesome_kiwi`
     robot.connect()
     keyboard.connect()
+    if args.leader_arm:
+        leader_arm.connect()
 
     if args.visualize:
         logging.info("Initializing Rerun for visualization.")
@@ -113,10 +151,13 @@ def main() -> None:
 
     if not robot.is_connected or not keyboard.is_connected:
         raise ValueError("Robot or keyboard is not connected!")
+    if args.leader_arm and not leader_arm.is_connected:
+        raise ValueError("Leader arm is not connected!")
     logging.info("Robot and keyboard are connected.")
     recorded_episodes = 0
     while recorded_episodes < args.episodes and not events["stop_recording"]:
-        arm_keyboard_handler = ArmTeleop()
+        if not args.leader_arm:
+            arm_keyboard_handler = ArmTeleop()
         logging.info(f"Recording episode {recorded_episodes}")
         # Run the record loop
         record_loop(
@@ -125,7 +166,7 @@ def main() -> None:
             fps=FPS,
             dataset=dataset,
             keyboard_handler=keyboard,
-            arm_keyboard_handler=arm_keyboard_handler,
+            arm_keyboard_handler=leader_arm if args.leader_arm else arm_keyboard_handler,
             control_time_s=EPISODE_TIME_SEC,
             single_task=args.task,
             display_data=args.visualize,
@@ -140,7 +181,7 @@ def main() -> None:
                 fps=FPS,
                 dataset=None,  # Don't record during reset phase
                 keyboard_handler=keyboard,
-                arm_keyboard_handler=arm_keyboard_handler,
+                arm_keyboard_handler=leader_arm if args.leader_arm else arm_keyboard_handler,
                 control_time_s=RESET_TIME_SEC,
                 single_task=args.task,
                 display_data=args.visualize,
@@ -163,6 +204,8 @@ def main() -> None:
 
     robot.disconnect()
     keyboard.disconnect()
+    if args.leader_arm:
+        leader_arm.disconnect()
     listener.stop()
 
 
